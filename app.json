@@ -58,6 +58,24 @@
       "required": true,
       "generator": "secret"
     },
+    "LTI_GUID":{
+      "description": "A unique identifier for your Materia instance. Reverse domain notation recommended.",
+      "required": false
+    },
+    "LTI_TOOL_ID":{
+      "description": "See tool_id: https://canvas.instructure.com/doc/api/file.lti_dev_key_config.html",
+      "required": false
+    },
+    "BOOL_LTI_USE_LAUNCH_ROLES":{
+      "description": "Should LTI launches change the user's role for Instructors & Students?",
+      "required": false,
+      "value": true
+    },
+    "BOOL_LTI_GRACEFUL_CONFIG_FALLBACK":{
+      "description": "Fallback to default consumer if a Canvas-specific one is not configured. See readme for more info.",
+      "required": false,
+      "value": true
+    },
     "AUTH_SALT":{
       "description": "Secret salt for hashing authentication variables. See Readme",
       "required": true,
