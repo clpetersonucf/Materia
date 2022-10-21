@@ -12,5 +12,7 @@ jobs:
           scope: '@clpetersonucf'
       - run: yarn install
       - run: yarn build
-      - run: cd public/dist
       - run: yarn publish
+        working-directory: ./public/dist
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
