@@ -1,0 +1,16 @@
+name: Upload Widget Dependencies Package
+on: workflow_dispatch
+jobs:
+  checkout-and-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '16.x'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@clpetersonucf'
+      - run: yarn install
+      - run: yarn build
+      - run: cd public/dist
+      - run: yarn publish

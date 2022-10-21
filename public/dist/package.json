@@ -1,0 +1,15 @@
+{
+	"name": "@clpetersonucf/materia-widget-dependencies",
+	"author": "University of Central Florida, Center for Distributed Learning",
+	"license": "AGPL-3.0",
+	"files": [
+		"js/materia.enginecore.js",
+		"js/materia.creatorcore.js",
+		"js/materia.scorecore.js"
+	],
+	"version": "0.0.1",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/clpetersonucf/Materia"
+	}
+}
