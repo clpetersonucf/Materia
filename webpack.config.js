@@ -141,7 +141,9 @@ module.exports =
 				// ]),
 				new CleanWebpackPlugin({
 					cleanOnceBeforeBuildPatterns: [
-						'!package.json'
+						'!package.json',
+						'!README.md',
+						'!path.js'
 					]
 				}), // clear the dist folder before build
 				new MiniCssExtractPlugin({ filename: '[name].css' }),
