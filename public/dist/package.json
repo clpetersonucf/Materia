@@ -1,5 +1,6 @@
 {
-	"name": "@clpetersonucf/materia-widget-dependencies",
+	"name": "materia-widget-dependencies",
+	"description": "The Widget Dependencies package provides js and css assets from Materia that are required for proper functioning of the Widget Development Kit.",
 	"author": "University of Central Florida, Center for Distributed Learning",
 	"license": "AGPL-3.0",
 	"files": [
