@@ -463,7 +463,7 @@ class Controller_Widgets extends Controller
 			Js::push_inline('var NAME = "'.$inst->name.'";');
 			Js::push_inline('var WIDGET_NAME = "'.$inst->widget->name.'";');
 			Js::push_inline('var IS_PREVIEW = "'.$is_preview.'";');
-			Js::push_inline('var ICON = "'.Config::get('materia.urls.engines')."{$inst->widget->dir}img/icon-92.png".'";');
+			Js::push_inline('var ICON = "'.Config::get('materia.urls.engines')."{$inst->widget->dir}img/icon-275.png".'";');
 
 			// condense login links into a string with delimiters to be embedded as a JS global
 			$link_items = [];

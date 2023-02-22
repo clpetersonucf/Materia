@@ -1,6 +1,6 @@
 {
   "name": "@ucfopen/materia",
-  "version": "10.0.0",
+  "version": "10.0.0-alpha1",
   "license": "AGPL-3.0",
   "engines": {
     "node": ">=18.0.0"
@@ -12,6 +12,7 @@
   "scripts": {
     "dev": "webpack-dev-server",
     "build": "webpack",
+    "postinstall": "yarn build",
     "test": "TZ=Etc/UTC jest --verbose",
     "test:dev": "TZ=Etc/UTC jest --verbose --watch --coverage",
     "test:ci": "TZ=Etc/UTC CI=true jest --ci --useStderr --coverage --coverageReporters text-summary cobertura",
