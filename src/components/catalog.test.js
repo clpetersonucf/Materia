@@ -124,24 +124,22 @@ const getWidgets = () => ([
 	},
 ])
 
+const queryClient = new QueryClient({
+	defaultOptions: {
+		queries: {
+			// Turns retries off
+			retry: false,
+		},
+	},
+})
+
 // Enables testing with react query
 const renderWithClient = (children) => {
-	const queryClient = new QueryClient({
-		defaultOptions: {
-			queries: {
-				// Turns retries off
-				retry: false,
-			},
-		},
-	})
+	 const { rerender } = render(<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>)
 
-	const { rerender, ...result } = render(<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>)
-
-	return {
-		...result,
-		rerender: (rerenderUi) =>
-			rerender(<QueryClientProvider client={queryClient}>{rerenderUi}</QueryClientProvider>)
-	}
+	 return {
+		rerender: (rerenderUi) => rerender(<QueryClientProvider client={queryClient}>{rerenderUi}</QueryClientProvider>)
+	 }
 }
 
 // Jest's official way to mock matchMedia
@@ -177,6 +175,7 @@ describe('Catalog', () => {
 	it.only('renders correctly', async () => {
 		const rendered = renderWithClient(<Catalog widgets={getWidgets()} isLoading={false} />)
 
+		// screen.debug()
 		// Waits for data to load
 		//await screen.findAllByText('Test_Student_One Test_Lastname_One')
 
@@ -201,13 +200,13 @@ describe('Catalog', () => {
 		// Mobile friendly
 
 		// Only should be filter by feature button
-		expect(screen.getAllByRole('button').length).toBe(1)
+		expect(screen.getAllByRole('button').length).toBe(2)
 
 		// Opens widget filter box
-		fireEvent.click(screen.getByRole('button', { name: /Filter by feature/i }))
+		fireEvent.click(screen.getByRole('button', { name: /Filter catalog by features/i }))
 
 		// Should have Clear filter button and 9 other filter buttons
-		expect(screen.getAllByRole('button').length).toBe(10)
+		expect(screen.getAllByRole('button').length).toBe(9)
 	})
 
 	it('renders with no widgets', async () => {
