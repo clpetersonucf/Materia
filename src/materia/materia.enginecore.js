@@ -100,6 +100,10 @@ Namespace('Materia').Engine = (() => {
 
 	const escapeScriptTags = (text) => text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
+	const submitPrompt = (text) => {
+		_sendPostMessage('submitPrompt', text)
+	}
+
 	return {
 		start,
 		addLog,
@@ -113,5 +117,6 @@ Namespace('Materia').Engine = (() => {
 		setHeight, // allows the widget to resize its iframe container to fit the height of its contents
 		setVerticalScroll, // allows the widget to scroll the page to a specific location
 		escapeScriptTags,
+		submitPrompt
 	}
 })()

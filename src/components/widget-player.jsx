@@ -353,6 +353,8 @@ const WidgetPlayer = ({instanceId, playId, minHeight='', minWidth='',showFooter=
 					return _setHeight(msg.data[0])
 				case 'setVerticalScroll':
 					return _setVerticalScroll(msg.data[0])
+				case 'submitPrompt':
+					return _submitPromptForEngine(msg.data)
 				case 'initialize':
 					break
 				default:
@@ -515,6 +517,13 @@ const WidgetPlayer = ({instanceId, playId, minHeight='', minWidth='',showFooter=
 
 	const _sendStorage = msg => {
 		dispatchPendingLogs({type: 'addStorage', payload: {log: {...msg, queueId: uuidv4()}}})
+	}
+
+	const _submitPromptForEngine = (prompt) => {
+		apiWidgetPromptGenerate(prompt).then((result) => {
+			if (result.response && result.success) _sendToWidget('promptResponse', [result.response])
+			else _sendToWidget('promptRejection')
+		})
 	}
 
 	/*********************** helper methods ***********************/
