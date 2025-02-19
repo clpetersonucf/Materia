@@ -15,6 +15,13 @@ Namespace('Materia').Engine = (() => {
 				_mediaUrl = msg.data[3]
 				_initWidget(msg.data[0], msg.data[1])
 				break
+			case 'promptResponse':
+				let prompt = [msg.data[0]]
+				_promptResponse(prompt)
+				break
+			case 'promptRejection':
+				_promptRejection()
+				break
 			default:
 				throw new Error(`Error: Engine Core received unknown post message: ${msg.type}`)
 				break
@@ -44,6 +51,14 @@ Namespace('Materia').Engine = (() => {
 		_widgetClass = widgetClass
 		_sendPostMessage('initialize')
 		_sendPostMessage('start', null)
+	}
+
+	const _promptResponse = (response) => {
+		_widgetClass.promptResponse(response)
+	}
+
+	const _promptRejection = () => {
+		_widgetClass.promptRejection()
 	}
 
 	const sendStorage = (args) => {

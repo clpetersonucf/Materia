@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useReducer } from 'react'
 import { useQuery } from 'react-query'
 import { v4 as uuidv4 } from 'uuid';
-import { apiGetWidgetInstance, apiGetQuestionSet, apiSessionVerify } from '../util/api'
+import { apiGetWidgetInstance, apiGetQuestionSet, apiSessionVerify, apiWidgetPromptGenerate } from '../util/api'
 import { player } from './materia-constants'
 import Alert from './alert'
 import usePlayStorageDataSave from './hooks/usePlayStorageDataSave'
