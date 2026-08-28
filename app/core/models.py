@@ -1598,7 +1598,7 @@ class WidgetQset(models.Model):
 
 class UserSettings(models.Model):
 
-    DEFAULT_PROFILE_FIELDS = {"useGravatar": True, "theme": "light"}
+    DEFAULT_PROFILE_FIELDS = {"useGravatar": False, "theme": "light"}
 
     user = models.OneToOneField(
         User, on_delete=models.CASCADE, related_name="profile_settings"
