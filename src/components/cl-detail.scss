@@ -190,7 +190,7 @@ section.page {
                 border-color: #D0ECFF;
             }
 
-            &.copy-btn {
+            &.copy-btn:disabled {
                 border-style: dashed;
             }
 
