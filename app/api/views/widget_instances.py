@@ -85,7 +85,7 @@ class WidgetInstanceViewSet(viewsets.ModelViewSet):
         seen = set()
 
         for tag_name in tag_names:
-            cleaned = " ".join((tag_name or "").strip().replace("#","").split())
+            cleaned = " ".join((tag_name or "").strip().replace("#", "").split())
             canonical = Tag.normalize_name(cleaned)
             if not canonical or canonical in seen:
                 continue
@@ -394,15 +394,16 @@ class WidgetInstanceViewSet(viewsets.ModelViewSet):
 
         logs = LogPlay.objects.filter(instance=instance)
 
-        # only prefetch storage logs if storage is enabled to reduce unnecessary DB pressure
         if instance.widget.is_storage_enabled:
             logs = (
-                logs.order_by("-created_at", "semester")
+                logs.order_by("-semester__start_at", "-created_at")
                 .select_related("semester")
                 .prefetch_related("storage_logs")
             )
         else:
-            logs = logs.order_by("-created_at", "semester").select_related("semester")
+            logs = logs.order_by("-semester__start_at", "-created_at").select_related(
+                "semester"
+            )
 
         summary = ScoreSummarySerializer.create_from_plays(
             logs, include_storage=instance.widget.is_storage_enabled

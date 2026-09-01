@@ -721,6 +721,7 @@ class ScoreSummarySerializer(serializers.Serializer):
                     "id": log.semester.id,
                     "term": log.semester.semester,
                     "year": log.created_at.year,
+                    "start_at": log.semester.start_at,
                     "students": 1,
                     "count": 1,
                     "total": log.percent,
@@ -774,6 +775,7 @@ class ScoreSummarySerializer(serializers.Serializer):
                     "id": data["id"],
                     "term": data["term"],
                     "year": data["year"],
+                    "start_at": data["start_at"],
                     "students": data["students"],
                     "average": round(data["total"] / data["count"], 2),
                     "distribution": data["distribution"],
@@ -781,7 +783,7 @@ class ScoreSummarySerializer(serializers.Serializer):
                 }
             )
 
-        return sorted(results, key=lambda x: (x["year"], x["term"]), reverse=True)
+        return sorted(results, key=lambda x: x["start_at"], reverse=True)
 
 
 # Used for incoming requests for qset generation. Does NOT map to a model.
