@@ -110,8 +110,6 @@ const MyWidgetsScores = ({inst, contexts, beardMode, setInvalidLogin}) => {
 		if (state.nextSemesterToLoad != -1) shouldScroll.current = true
 	}
 
-	console.log(shouldScroll.current)
-
 	let contentRender = <LoadingIcon />
 	if (error) {
 		contentRender = <div className='error'>{error}</div>
