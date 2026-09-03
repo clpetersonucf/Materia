@@ -14,6 +14,7 @@ from api.permissions import (
 from api.serializers import (
     LibraryEntrySerializer,
     ObjectPermissionSerializer,
+    PerformanceRequestSerializer,
     PermsUpdateRequestListSerializer,
     PlayIdSerializer,
     PublishToLibrarySerializer,
@@ -31,6 +32,7 @@ from community_library.models import (
 )
 from core.message_exception import MsgFailure, MsgInvalidInput, MsgNoPerm
 from core.models import (
+    DateRange,
     LogActivity,
     LogPlay,
     Notification,
@@ -42,6 +44,7 @@ from core.models import (
 from core.services.instance_service import WidgetInstanceService
 from core.services.perm_service import PermService
 from core.services.play_data_exporter_service import PlayDataExporterService
+from core.services.semester_service import SemesterService
 from django.db import transaction
 from django.db.models import F
 from django.http import HttpResponse
@@ -392,7 +395,26 @@ class WidgetInstanceViewSet(viewsets.ModelViewSet):
     def performance(self, request, pk=None):
         instance = self.get_object()
 
-        logs = LogPlay.objects.filter(instance=instance)
+        params = PerformanceRequestSerializer(data=request.query_params)
+        params.is_valid(raise_exception=True)
+
+        semester = None
+
+        if params.validated_data["most_recent"]:
+            semester = SemesterService.find_nearest_semester_with_logs(
+                instance, DateRange.objects.order_by("-start_at")
+            )
+        elif params.validated_data["for_semester"] is not None:
+            semester = params.validated_data["for_semester"]
+
+        filters = {
+            "instance": instance,
+        }
+
+        if semester is not None:
+            filters["semester"] = semester
+
+        logs = LogPlay.objects.filter(**filters)
 
         if instance.widget.is_storage_enabled:
             logs = (
@@ -411,7 +433,28 @@ class WidgetInstanceViewSet(viewsets.ModelViewSet):
 
         serialized = ScoreSummarySerializer(data=summary, many=True)
         serialized.is_valid(raise_exception=True)
-        return Response(serialized.data)
+
+        # return a flat list of semesters if no semester-specific query param is provided
+        if semester is None:
+            return Response(serialized.data)
+
+        # calculate the most recent preceding semester (if any) with existing play logs, so the
+        # client knows which semester ID to request next
+        preceding_semester = SemesterService.find_nearest_semester_with_logs(
+            instance,
+            DateRange.objects.filter(start_at__lt=semester.start_at).order_by(
+                "-start_at"
+            ),
+        )
+
+        return Response(
+            {
+                "results": serialized.data,
+                "preceding_semester_id": (
+                    preceding_semester.id if preceding_semester is not None else None
+                ),
+            }
+        )
 
     @action(
         detail=True,

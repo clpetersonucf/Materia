@@ -786,6 +786,22 @@ class ScoreSummarySerializer(serializers.Serializer):
         return sorted(results, key=lambda x: x["start_at"], reverse=True)
 
 
+# Used for incoming requests to the performance endpoint. Does NOT map to a model.
+class PerformanceRequestSerializer(serializers.Serializer):
+    most_recent = serializers.BooleanField(required=False, default=False)
+    for_semester = serializers.PrimaryKeyRelatedField(
+        queryset=DateRange.objects.all(), required=False, allow_null=True, default=None
+    )
+
+    def validate(self, data):
+        if data["most_recent"] and data["for_semester"] is not None:
+            raise serializers.ValidationError(
+                "most_recent and for_semester cannot both be provided."
+            )
+
+        return data
+
+
 # Used for incoming requests for qset generation. Does NOT map to a model.
 class QsetGenerationRequestSerializer(serializers.Serializer):
     instance = WidgetInstanceSerializer(read_only=True)

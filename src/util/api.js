@@ -400,10 +400,24 @@ export const apiGetWidgetInstancePreviewScores = (playId, previewInstId, snapsho
  * @param {string} instId - The ID of the widget instance.
  * @returns {Promise<any>} - Parsed response data.
  */
-export const apiGetScoreSummary = instId => {
-	return handleRequest(methods.GET, `/api/instances/${instId}/performance/`)
+export const apiGetScoreSummary = (instId, mostRecent = false, semesterId = -1) => {
+
+	let url = `/api/instances/${instId}/performance/`
+
+	if (mostRecent) url += '?most_recent=true'
+	else if (semesterId != -1) url += `?for_semester=${semesterId}`
+
+	return handleRequest(methods.GET, url)
 	.then(data => {
-		const scores = data
+
+		if (Array.isArray(data) && !data.length) return []
+
+		let scores = data
+
+		if (mostRecent || semesterId != -1) {
+			scores = data.results
+		}
+
 		const ranges = [
 			'0-9',
 			'10-19',
@@ -416,9 +430,10 @@ export const apiGetScoreSummary = instId => {
 			'80-89',
 			'90-100',
 		]
-		scores.forEach(semester => {
+		scores.forEach((semester, index) => {
 			semester.graphData = semester.distribution?.length ? semester.distribution?.map((d, i) => ({ label: ranges[i], value: d })) : null
 			semester.totalScores = semester.distribution?.length ? semester.distribution?.reduce((total, count) => total + count) : 0
+			semester.preceding_semester_id = data.preceding_semester_id ?? (scores[index - 1] != undefined ? scores[index - 1].id : -1)
 		})
 
 		return scores
