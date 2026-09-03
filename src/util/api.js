@@ -501,8 +501,11 @@ export const apiGetPlayLogs = (instId, term, year, contexts, page_number) => {
 		})
 }
 
-export const apiGetStorageData = instId => {
-	return handleRequest(methods.GET, `/api/storage/?inst_id=${instId}`);
+export const apiGetStorageData = (instId, year = null, term = null) => {
+	const params = new URLSearchParams({ inst_id: instId })
+	if (year !== null) params.set('year', year)
+	if (term !== null) params.set('term', term)
+	return handleRequest(methods.GET, `/api/storage/?${params}`);
 }
 
 /**
