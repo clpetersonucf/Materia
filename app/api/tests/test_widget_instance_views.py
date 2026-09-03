@@ -992,7 +992,7 @@ class TestInstancePerformance(WidgetInstanceViewSetTestCase):
         self.assertEqual(response.data["results"][0]["id"], self.semester.id)
         self.assertIsNone(response.data["preceding_semester_id"])
 
-    def test_performance_activity_returns_semester_ids_with_logs(self):
+    def test_performance_available_returns_semester_ids_with_logs(self):
         latest_semester = (
             DateRange.objects.filter(year=2025).order_by("start_at").first()
         )
@@ -1016,7 +1016,7 @@ class TestInstancePerformance(WidgetInstanceViewSetTestCase):
 
         self.client.force_authenticate(user=self.regular_user)
         response = self.client.get(
-            f"/api/instances/{self.author_instance.id}/performance/activity/"
+            f"/api/instances/{self.author_instance.id}/performance/available/"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
