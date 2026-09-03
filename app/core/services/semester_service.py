@@ -25,6 +25,7 @@ class SemesterService:
         cache.set("current-semester", cur_semester, 86400)  # cache for 24hrs
         return cur_semester
 
+    @staticmethod
     def get_semester_by_id(id) -> DateRange:
 
         cached_result = cache.get(f"semester-{id}")
