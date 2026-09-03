@@ -404,8 +404,8 @@ export const apiGetScoreSummary = (instId, mostRecent = false, semesterId = -1) 
 
 	let url = `/api/instances/${instId}/performance/`
 
-	if (mostRecent) url += '?most_recent=true'
-	else if (semesterId != -1) url += `?for_semester=${semesterId}`
+	if (mostRecent) url += 'latest/'
+	else if (semesterId != -1) url += `semester/${semesterId}/`
 
 	return handleRequest(methods.GET, url)
 	.then(data => {

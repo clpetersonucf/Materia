@@ -14,7 +14,7 @@ from api.permissions import (
 from api.serializers import (
     LibraryEntrySerializer,
     ObjectPermissionSerializer,
-    PerformanceRequestSerializer,
+    PerformanceSemesterSerializer,
     PermsUpdateRequestListSerializer,
     PlayIdSerializer,
     PublishToLibrarySerializer,
@@ -77,7 +77,11 @@ class WidgetInstanceViewSet(viewsets.ModelViewSet):
 
     # queryset filtering managed via UserInstanceFilterBackend
     def get_queryset(self):
-        if self.action == "performance":
+        if self.action in (
+            "performance",
+            "performance_latest",
+            "performance_semester",
+        ):
             return WidgetInstance.objects.select_related("widget")
         else:
             return WidgetInstance.objects.all()
@@ -157,7 +161,12 @@ class WidgetInstanceViewSet(viewsets.ModelViewSet):
         # score distribution needs to be accessible to anyone who can play an instance
         # this either requires authentication (for normal instances)
         # or public visibility (for guest instances)
-        elif self.action == "performance":
+        elif self.action in (
+            "performance",
+            "performance_available",
+            "performance_latest",
+            "performance_semester",
+        ):
             permission_classes = [IsAuthenticated | InstanceHasGuestAccess]
 
         # must have (any) access to instance or elevated perms
@@ -391,22 +400,7 @@ class WidgetInstanceViewSet(viewsets.ModelViewSet):
             {"lock_obtained": WidgetInstanceService.get_lock(instance.id, request.user)}
         )
 
-    @action(detail=True, methods=["get"])
-    def performance(self, request, pk=None):
-        instance = self.get_object()
-
-        params = PerformanceRequestSerializer(data=request.query_params)
-        params.is_valid(raise_exception=True)
-
-        semester = None
-
-        if params.validated_data["most_recent"]:
-            semester = SemesterService.find_nearest_semester_with_logs(
-                instance, DateRange.objects.order_by("-start_at")
-            )
-        elif params.validated_data["for_semester"] is not None:
-            semester = params.validated_data["for_semester"]
-
+    def _summarize_performance(self, instance, semester=None):
         filters = {
             "instance": instance,
         }
@@ -434,26 +428,72 @@ class WidgetInstanceViewSet(viewsets.ModelViewSet):
         serialized = ScoreSummarySerializer(data=summary, many=True)
         serialized.is_valid(raise_exception=True)
 
-        # return a flat list of semesters if no semester-specific query param is provided
-        if semester is None:
-            return Response(serialized.data)
+        return serialized.data
+
+    def _performance_for_semester_response(self, instance, semester):
+        results = (
+            self._summarize_performance(instance, semester)
+            if semester is not None
+            else []
+        )
 
         # calculate the most recent preceding semester (if any) with existing play logs, so the
         # client knows which semester ID to request next
-        preceding_semester = SemesterService.find_nearest_semester_with_logs(
-            instance,
-            DateRange.objects.filter(start_at__lt=semester.start_at).order_by(
-                "-start_at"
-            ),
+        preceding_semester = (
+            SemesterService.find_nearest_semester_with_logs(
+                instance,
+                DateRange.objects.filter(start_at__lt=semester.start_at).order_by(
+                    "-start_at"
+                ),
+            )
+            if semester is not None
+            else None
         )
 
         return Response(
             {
-                "results": serialized.data,
+                "results": results,
                 "preceding_semester_id": (
                     preceding_semester.id if preceding_semester is not None else None
                 ),
             }
+        )
+
+    # retrieves a flat list of performance data for a given widget instance
+    @action(detail=True, methods=["get"])
+    def performance(self, request, pk=None):
+        instance = self.get_object()
+        return Response(self._summarize_performance(instance))
+
+    # retrieves a flat list of semester IDs that contain play logs for a given widget instance
+    @action(detail=True, methods=["get"], url_path="performance/available")
+    def performance_available(self, request, pk=None):
+        instance = self.get_object()
+        return Response(SemesterService.get_semester_ids_with_logs(instance))
+
+    # retrieves performance data for a given widget instance for the latest semester available
+    @action(detail=True, methods=["get"], url_path="performance/latest")
+    def performance_latest(self, request, pk=None):
+        instance = self.get_object()
+        semester = SemesterService.find_nearest_semester_with_logs(
+            instance, DateRange.objects.order_by("-start_at")
+        )
+        return self._performance_for_semester_response(instance, semester)
+
+    # retrieves performance data for a given widget instance and a given semester
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="performance/semester/(?P<semester_id>[^/.]+)",
+    )
+    def performance_semester(self, request, pk=None, semester_id=None):
+        instance = self.get_object()
+
+        params = PerformanceSemesterSerializer(data={"semester": semester_id})
+        params.is_valid(raise_exception=True)
+
+        return self._performance_for_semester_response(
+            instance, params.validated_data["semester"]
         )
 
     @action(

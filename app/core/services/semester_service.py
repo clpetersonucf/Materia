@@ -39,12 +39,11 @@ class SemesterService:
 
         return semester
 
+    # performance-sensitive method to locate the nearest (chronologically) semester that contains play logs
     @staticmethod
     def find_nearest_semester_with_logs(
         instance, ordered_semesters
     ) -> DateRange | None:
-        # semesters are few, so checking them in the given order and stopping at the first
-        # indexed exists() hit avoids scanning the much larger log_play table
         for candidate in ordered_semesters:
             if LogPlay.objects.filter(
                 instance=instance, semester_id=candidate.id
@@ -52,3 +51,19 @@ class SemesterService:
                 return candidate
 
         return None
+
+    # performance-sensitive method to identify all semesters that contain play logs for a give instance
+    @staticmethod
+    def get_semester_ids_with_logs(instance) -> list[int]:
+        semester_ids = (
+            LogPlay.objects.filter(instance=instance)
+            .order_by()
+            .values_list("semester_id", flat=True)
+            .distinct()
+        )
+
+        return list(
+            DateRange.objects.filter(id__in=list(semester_ids))
+            .order_by("-start_at")
+            .values_list("id", flat=True)
+        )
