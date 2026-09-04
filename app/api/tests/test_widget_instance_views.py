@@ -1020,7 +1020,21 @@ class TestInstancePerformance(WidgetInstanceViewSetTestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [latest_semester.id, self.semester.id])
+        self.assertEqual(
+            [dict(semester) for semester in response.data],
+            [
+                {
+                    "id": latest_semester.id,
+                    "semester": latest_semester.semester,
+                    "year": latest_semester.year,
+                },
+                {
+                    "id": self.semester.id,
+                    "semester": self.semester.semester,
+                    "year": self.semester.year,
+                },
+            ],
+        )
 
 
 class TestInstancePerms(WidgetInstanceViewSetTestCase):
