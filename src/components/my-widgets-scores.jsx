@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiGetScoreSummary } from '../util/api'
 import MyWidgetScoreSemester from './my-widgets-score-semester'
