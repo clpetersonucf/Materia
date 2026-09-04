@@ -14,6 +14,7 @@ from api.permissions import (
 from api.serializers import (
     LibraryEntrySerializer,
     ObjectPermissionSerializer,
+    PerformanceAvailableSemesterSerializer,
     PerformanceSemesterSerializer,
     PermsUpdateRequestListSerializer,
     PlayIdSerializer,
@@ -469,7 +470,12 @@ class WidgetInstanceViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="performance/available")
     def performance_available(self, request, pk=None):
         instance = self.get_object()
-        return Response(SemesterService.get_semester_ids_with_logs(instance))
+        semesters = SemesterService.get_semester_ids_with_logs(instance)
+
+        serializer = PerformanceAvailableSemesterSerializer(semesters, many=True)
+        return Response(serializer.data)
+
+        # return Response(SemesterService.get_semester_ids_with_logs(instance))
 
     # retrieves performance data for a given widget instance for the latest semester available
     @action(detail=True, methods=["get"], url_path="performance/latest")

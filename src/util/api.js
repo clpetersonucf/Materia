@@ -441,6 +441,15 @@ export const apiGetScoreSummary = (instId, mostRecent = false, semesterId = -1) 
 }
 
 /**
+ * Takes a widget instance ID, and returns a list of semesters that contain play data.
+ * @param {string} instId - The ID of the widget instance.
+ * @returns {Promise<any>} - Parsed response data.
+ */
+export const apiGetSemestersAvailable = (instId) => {
+	return handleRequest(methods.GET, `/api/instances/${instId}/performance/available/`)
+}
+
+/**
  * Takes a widget instance ID, and returns a summary of scores submitted for that instance separated by semester.
  * @param {string} instId - The ID of the widget instance.
  * @param {string} term - The time of year, typically 'spring', 'summer' or 'fall'.

@@ -63,7 +63,5 @@ class SemesterService:
         )
 
         return list(
-            DateRange.objects.filter(id__in=list(semester_ids))
-            .order_by("-start_at")
-            .values_list("id", flat=True)
+            DateRange.objects.filter(id__in=list(semester_ids)).order_by("-start_at")
         )

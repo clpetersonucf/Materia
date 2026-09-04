@@ -146,7 +146,6 @@ const MyWidgetsScores = ({inst, contexts, beardMode, setInvalidLogin}) => {
 		exportRender = (
 			<MyWidgetsExport onClose={closeExport}
 				inst={inst}
-				scores={currScores}
 			/>
 		)
 	}

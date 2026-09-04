@@ -786,6 +786,16 @@ class ScoreSummarySerializer(serializers.Serializer):
         return sorted(results, key=lambda x: x["start_at"], reverse=True)
 
 
+class PerformanceAvailableSemesterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DateRange
+        fields = [
+            "id",
+            "semester",
+            "year",
+        ]
+
+
 # Used for validating the semester ID in the performance endpoint URL. Does NOT map to a model.
 class PerformanceSemesterSerializer(serializers.Serializer):
     semester = serializers.PrimaryKeyRelatedField(queryset=DateRange.objects.all())
