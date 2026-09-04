@@ -28,16 +28,16 @@ DEFAULT_LIBRARY_CATEGORY_BANNER_PATHS = {
 }
 
 DEFAULT_LIBRARY_CATEGORY_COLORS = {
-    "business": "#389ad6",
-    "education": "#389ad6",
-    "hospitality-and-tourism": "#389ad6",
     "arts-and-humanities": "#b944cc",
-    "public-affairs-and-law": "#b944cc",
-    "social-sciences": "#e17547",
-    "health-medicine-and-nursing": "#e17547",
-    "sciences": "#4ba829",
-    "engineering-and-computer-science": "#4ba829",
-    "other": "#4ba829",
+    "business": "#389ad6",
+    "education": "#4ba829",
+    "engineering-and-computer-science": "#e17547",
+    "health-medicine-and-nursing": "#b944cc",
+    "hospitality-and-tourism": "#389ad6",
+    "public-affairs-and-law": "#4ba829",
+    "other": "#e17547",
+    "sciences": "#b944cc",
+    "social-sciences": "#389ad6",
 }
 
 
