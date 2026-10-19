@@ -1,17 +1,17 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { apiGetUser, apiGetSiteImages, apiGetSiteMessages } from '../util/api'
+import { apiGetUser, apiGetSiteImages } from '../util/api'
 import './community-library.scss'
 import CommunityLibraryCard from './community-library-card'
+import CommunityLibraryCategorySection from './community-library-category-section'
 import {
 	useCommunityLibraryList,
 	useCategoryList
 } from './hooks/useCommunityLibrary'
+import useSiteMessages from './hooks/useSiteMessages'
 
-const stemCategories = ["math", "science", "engineering"]
-const liberalCategories = ["history", "art", "english", "language"]
-const businessCategories = ["business", "education", "hospitality"]
-const healthCategories = ["medicine", "health"]
+const DEFAULT_FEATURED_HEADER = 'Featured Widgets'
+const DEFAULT_FEATURED_TEXT = 'Explore a curated collection of widgets selected by the Materia team. Browse available options to find tools and resources that can enhance your course and support your teaching goals.'
 
 const CommunityLibraryDashboard = ({setCategories}) => {
 
@@ -23,19 +23,12 @@ const CommunityLibraryDashboard = ({setCategories}) => {
 	const [lastTouchX, setLastTouchX] = useState(0)
 
 	const { entries: featured } = useCommunityLibraryList(null, "", "", [], "", "", [], true)
-	const { entries: stem } = useCommunityLibraryList(6, "", "", stemCategories, "", "", [], false)
-	const { entries: liberal } = useCommunityLibraryList(6, "", "", liberalCategories, "", "", [], false)
-	const { entries: business } = useCommunityLibraryList(6, "", "", businessCategories, "", "", [], false)
-	const { entries: health } = useCommunityLibraryList(6, "", "", healthCategories, "", "", [], false)
 
 	const { data: categories } = useCategoryList()
 	
 	const [mappedCategories, setMappedCategories] = useState({})
 
-	const [ featuredStrings, setFeaturedStrings ] = useState({
-		text: 'Explore a curated collection of widgets selected by the Materia team. Browse available options to find tools and resources that can enhance your course and support your teaching goals.',
-		header: 'Featured Widgets'
-	})
+	const { messages: libraryMessages } = useSiteMessages({ types: ['LIBRARY_TEXT', 'LIBRARY_HEADER'] })
 
 	useEffect(() => {
 		if(!categories) return
@@ -96,32 +89,6 @@ const CommunityLibraryDashboard = ({setCategories}) => {
 		retry: false
 	})
 
-	const {data: libraryFeaturedStrings} = useQuery({
-		queryKey: ['library-featured-strings'],
-		queryFn: async () => {
-			const messages = await apiGetSiteMessages(['LIBRARY_TEXT', 'LIBRARY_HEADER'])
-			console.log(messages)
-			return messages
-		},
-		refetchOnWindowFocus: false,
-		staleTime: Infinity,
-	})
-
-	useEffect(() => {
-		if (!!libraryFeaturedStrings && libraryFeaturedStrings.length) {
-			libraryFeaturedStrings.forEach((string) => {
-				switch (string.message_type) {
-					case 'LIBRARY_TEXT':
-						setFeaturedStrings((featured) => ({...featured, text: string.message_text}))
-						break
-					case 'LIBRARY_HEADER':
-						setFeaturedStrings((featured) => ({...featured, header: string.message_text}))
-						break
-				}
-			})
-		}
-	},[libraryFeaturedStrings])
-
 	const mouseStopDrag = (e) => {
 		if(carouselDragging) {
 			setCarouselShift(Math.min(Math.max(carouselShift + Math.round(carouselDrag / featuredCardSize), 0), maxShift()))
@@ -132,7 +99,7 @@ const CommunityLibraryDashboard = ({setCategories}) => {
 			setTimeout(()=>setCarouselDragging(false),50)
 		}
 	}
-	
+
 	return (
 	<div className='dashboard' onMouseUp={mouseStopDrag} onMouseLeave={mouseStopDrag}>
 		<div className='welcome-banner'>
@@ -151,9 +118,9 @@ const CommunityLibraryDashboard = ({setCategories}) => {
 				<div className='row'>
 					<div>
 						<h3 className='featured-header'>
-							{ featuredStrings.header }
+							{ libraryMessages.LIBRARY_HEADER ?? DEFAULT_FEATURED_HEADER }
 						</h3>
-						<p>{featuredStrings.text}</p>
+						<p>{libraryMessages.LIBRARY_TEXT ?? DEFAULT_FEATURED_TEXT}</p>
 					</div>
 				</div>
 				<div className='content-container'>
@@ -227,102 +194,15 @@ const CommunityLibraryDashboard = ({setCategories}) => {
 			</div>
 		}
 		<h3>Community Widgets</h3>
-		<div className='category-box liberal'>
-			<div className='row'>
-				<h4>Arts & Humanities</h4>
-				<button className='see-all' 
-				aria-label='See all Arts & Humanities widgets'
-				onClick={()=>setCategories(new Set([...liberalCategories]))}>
-					{">"} See all</button>
-			</div>
-			{
-			liberal && liberal.length > 0 ?
-			<div className='content'>
-				{liberal.map((entry, i) => (
-					<CommunityLibraryCard
-					key={entry.id + `_stem_${i}`}
-					entry={entry}
-					highlightedTags={[]}
-					categoryObject={getCatObject(entry.category)}
-					/>
-				))}
-			</div>
-			:
-			<div className='none-found'>No widgets in this category were found.</div>
-			}
-		</div>
-		<div className='category-box business'>
-			<div className='row'>
-				<h4>Business & Administration</h4>
-				<button className='see-all' 
-				aria-label='See all Business & Administration widgets'
-				onClick={()=>setCategories(new Set([...businessCategories]))}>
-					{">"} See all</button>
-			</div>
-			{
-			business && business.length > 0 ?
-			<div className='content'>
-				{business.map((entry, i) => (
-					<CommunityLibraryCard
-					key={entry.id + `_stem_${i}`}
-					entry={entry}
-					highlightedTags={[]}
-					categoryObject={getCatObject(entry.category)}
-					/>
-				))}
-			</div>
-			:
-			<div className='none-found'>No widgets in this category were found.</div>
-			}
-		</div>
-		<div className='category-box stem'>
-			<div className='row'>
-				<h4>STEM</h4>
-				<button className='see-all' 
-				aria-label='See all STEM widgets'
-				onClick={()=>setCategories(new Set([...stemCategories]))}>
-					{">"} See all</button>
-			</div>
-			{
-			stem && stem.length > 0 ?
-			<div className='content'>
-				{stem.map((entry, i) => (
-					<CommunityLibraryCard
-						key={entry.id + `_stem_${i}`}
-						entry={entry}
-						highlightedTags={[]}
-						categoryObject={getCatObject(entry.category)}
-					/>
-				))}
-			</div>
-			:
-			<div className='none-found'>No widgets in this category were found.</div>
-			}
-		</div>
-		<div className='category-box health'>
-			<div className='row'>
-				<h4>Healthcare</h4>
-				<button className='see-all' 
-				aria-label='See all Healthcare widgets'
-				onClick={()=>setCategories(new Set([...healthCategories]))}>
-					{">"} See all</button>
-			</div>
-			{
-			health && health.length > 0 ?
-			<div className='content'>
-				{health.map((entry, i) => (
-					<CommunityLibraryCard
-					key={entry.id + `_stem_${i}`}
-					entry={entry}
-					highlightedTags={[]}
-					categoryObject={getCatObject(entry.category)}
-					/>
-				))}
-			</div>
-			:
-			<div className='none-found'>No widgets in this category were found.</div>
-			}
-		</div>
+		{
+			categories && categories.map((category) => (
+				<CommunityLibraryCategorySection
+					key={category.slug}
+					category={category}
+					setCategories={setCategories}
+				/>
+			))
+		}
 	</div>
 	)
 }
