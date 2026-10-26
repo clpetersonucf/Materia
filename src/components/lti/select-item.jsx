@@ -330,7 +330,7 @@ const SelectItem = ({ embedded=false }) => {
 	if (showRefreshArrow) refreshArrow = <div className="qtip right lti">Click to see your new widget</div>
 
 	return (
-		<div id="lti-select-wrapper">
+		<div id="lti-select-wrapper" className='lti'>
 			{error && <p role="alert">{error}</p>}
 			<header>
 				<h1>{strHeader}</h1>

@@ -8,6 +8,8 @@ export const configureEmbeddedAuth = token => {
 	accessToken = token || null
 }
 
+// modifies fetch options object if we're operating in an embedded context
+// removes CSRF headers and appends the authorization header with the provided access token
 export const embeddedRequestOptions = (url, options = {}) => {
 	if (!embedded) return options
 	const target = new URL(url, window.location.href)

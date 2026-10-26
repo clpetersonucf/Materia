@@ -583,7 +583,7 @@ const Scores = ({ instID, playID: playIDProp, userID, token, contextID, isEmbedd
 	}
 
 	return (
-		<article className={`container ${instanceIsLoading || scoresAreLoading ? 'loading' : 'ready'}`}>
+		<article className={`score-screen container ${instanceIsLoading || scoresAreLoading ? 'loading' : 'ready'}`}>
 			<div className='loading-icon-holder'><LoadingIcon size='med' /></div>
 			{scoreHeaderRender}
 			{overviewRender}

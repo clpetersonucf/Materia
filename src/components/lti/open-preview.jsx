@@ -85,13 +85,13 @@ const SelectItem = ({ embeddedContext=null }) => {
 	}
 
 	return (
-		<>
+		<div className='lti'>
 			<header className={`${state.provisionalAccess ? 'preview-warning' : 'preview-success'}`}>
 				<h1>Materia Widget Embedded</h1>
 				<div id="logo"></div>
 			</header>
 			{sectionRender}
-		</>
+		</div>
 	)
 }
 

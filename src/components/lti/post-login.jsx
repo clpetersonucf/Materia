@@ -240,7 +240,7 @@ const PostLogin = ({ embeddedContext=null }) => {
 	)
 
 	return (
-		<section id="lti-login-section">
+		<section id="lti-login-section" className='lti'>
 			{isAuthor ? instructor_page : student_page}
 		</section>
 	)
