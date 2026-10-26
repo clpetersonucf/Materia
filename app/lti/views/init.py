@@ -46,7 +46,7 @@ class MateriaOIDCLoginInitView(OIDCLoginInitView):
         storage_target = params.get("lti_storage_target")
         if storage_target != "post_message_forwarding":
             return super().get_oidc_response(request, registration_uuid, params)
-        
+
         tool_conf = DjangoToolConfig(registration_uuid)
         launch_data_storage = CookieFreeDjangoCacheDataStorage()
         oidc_login = DjangoOIDCLogin(
@@ -57,8 +57,10 @@ class MateriaOIDCLoginInitView(OIDCLoginInitView):
         if target_link_uri is None:
             return HttpResponseBadRequest("Missing target_link_uri parameter.")
 
+        redirect_url = self.get_redirect_url(target_link_uri)
+
         authorization_url = oidc_login.get_redirect_object(
-            target_link_uri
+            redirect_url
         ).get_redirect_url()
         parsed_redirect = urlparse(authorization_url)
         authorization_params = parse_qs(parsed_redirect.query)

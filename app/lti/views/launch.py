@@ -1,6 +1,13 @@
 import logging
+from urllib.parse import urlsplit
 
+from api.authentication import issue_embedded_token
+from api.score_services import can_review_scores
+from core.models import LogPlay, WidgetInstance
+from core.views.embedded import embedded_shell
+from django.conf import settings
 from django.shortcuts import redirect, render
+from django.urls import Resolver404, resolve
 from lti.exceptions import LTIAuthException
 from lti.services.auth import LTIAuthService
 from lti.services.launch import LTILaunchService
@@ -13,9 +20,11 @@ from lti.utils import (
 from lti.views.lti import error_page
 from lti_tool.constants import SESSION_KEY
 from lti_tool.types import LtiHttpRequest
+from lti_tool.utils import get_launch_from_request as get_cookie_launch
 from lti_tool.utils import sync_data_from_launch
 from lti_tool.views import LtiLaunchBaseView
 from pylti1p3.exception import LtiException
+from rest_framework.exceptions import AuthenticationFailed
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +39,10 @@ class ApplicationLaunchView(LtiLaunchBaseView):
             storage_target = request.POST.get("lti_storage_target")
             if storage_target != "post_message_forwarding":
                 # launch using cookies if we cant use post messages
+                if settings.EMBEDDED_AUTH_ENABLED:
+                    return self.process_validated_launch(
+                        request, get_cookie_launch(request)
+                    )
                 return super().post(request, *args, **kwargs)
 
             # if we have not retrieved storage values yet, route to oidc_get template
@@ -46,7 +59,8 @@ class ApplicationLaunchView(LtiLaunchBaseView):
 
             request.POST = launch_post
 
-            request.session.clear()
+            if not settings.EMBEDDED_AUTH_ENABLED:
+                request.session.clear()
             lti_launch = get_launch_from_request(request)
             return self.process_validated_launch(request, lti_launch)
         except LtiException:
@@ -79,8 +93,22 @@ class ApplicationLaunchView(LtiLaunchBaseView):
         if not lti_launch.deployment.is_active:
             return self.handle_inactive_deployment(request, lti_launch)
 
-        request.session[SESSION_KEY] = lti_launch.get_launch_id()
         request.lti_launch = lti_launch
+
+        # If embedded auth is enabled, get_embedded_launch_response returns an embed shell
+        # or one of various conditional error states depending on validation
+        if settings.EMBEDDED_AUTH_ENABLED and (
+            lti_launch.is_resource_launch or lti_launch.is_deep_link_launch
+        ):
+            response = self.get_embedded_launch_response(request, lti_launch)
+            if response is not None:
+                return response
+
+        if settings.EMBEDDED_AUTH_ENABLED:
+            request.session.clear()
+        request.session[SESSION_KEY] = lti_launch.get_launch_id()
+
+        # Legacy launch routing when embedded auth is disabled
         if request.lti_launch.is_resource_launch:
             return self.handle_resource_launch(request, lti_launch)
         if request.lti_launch.is_deep_link_launch:
@@ -112,6 +140,134 @@ class ApplicationLaunchView(LtiLaunchBaseView):
             return redirect(destination)
         except Exception:
             return error_page(request, "error_unknown_assignment")
+
+    def get_embedded_launch_response(self, request, lti_launch):
+        """
+        Returns a number of different views depending on launch validation and context.
+        If validation fails, returns an LTI error page of a particular type.
+        Otherwise, returns an embed shell that houses content while providing access to a grant token
+        """
+        launch_data = lti_launch.get_launch_data()
+        instance = None
+        play = None
+        provisional = False
+
+        # determine `purpose` by inspecting launch context
+
+        if not lti_launch.is_resource_launch:
+            purpose = "deep-link"
+        else:
+            try:
+                target = urlsplit(LTILaunchService.get_launch_redirect(lti_launch))
+            except ValueError:
+                logger.error("LTI: embedded launch target is malformed", exc_info=True)
+                return error_page(request, "error_unknown_assignment")
+            base = urlsplit(settings.URLS["BASE_URL"])
+            if (
+                target.scheme
+                and target.scheme != base.scheme
+                or target.netloc
+                and target.netloc != base.netloc
+            ):
+                logger.error("LTI: embedded launch target is not a Materia URL")
+                return error_page(request, "error_unknown_assignment")
+            try:
+                route = resolve(target.path.rstrip("/") + "/")
+            except Resolver404:
+                return error_page(request, "error_unknown_assignment")
+
+            # post_login is used for course nav
+            if target.path.rstrip("/") == "/lti/post_login":
+                purpose = "course-navigation"
+            elif route.url_name in {
+                "widget play",
+                "widget embed",
+                "scores",
+                "single score",
+            }:
+                instance_id = route.kwargs["widget_instance_id"]
+                play_id = route.kwargs.get("play_id")
+                if play_id and len(play_id) < len(instance_id):
+                    instance_id, play_id = play_id, instance_id
+                instance = WidgetInstance.objects.filter(
+                    pk=instance_id, is_deleted=False
+                ).first()
+                if instance is None:
+                    return error_page(request, "error_unknown_assignment")
+                if instance.guest_access:
+                    return error_page(request, "error_lti_guest_mode")
+                if route.url_name in {"scores", "single score"}:
+
+                    # score screen, either immediate post-play or viewing a prior submission
+                    purpose = "scores"
+                    if play_id:
+                        play = LogPlay.objects.filter(
+                            pk=play_id, instance=instance
+                        ).first()
+                        if play is None:
+                            return error_page(request, "error_unknown_assignment")
+                else:
+
+                    # player-related views: `instructor-resource` is rendered instead for course authors
+                    # (the widget preview view)
+                    # otherwise, `player` is rendered
+                    purpose = (
+                        "instructor-resource"
+                        if LTIAuthService.is_user_course_author(launch_data)
+                        else "player"
+                    )
+                    if not (
+                        LTILaunchService.get_context_id(launch_data)
+                        and LTILaunchService.get_resource_link(launch_data)
+                    ):
+                        logger.error(
+                            "LTI: embedded launch is missing course or resource context"
+                        )
+                        return error_page(request, "error_launch_validation")
+            else:
+                return error_page(request, "error_unknown_assignment")
+        try:
+            # we call the auth service here to provision or update the user record and roles
+            # however, since we're not relying on auth sessions for embedded launches, login() is skipped
+            user = LTIAuthService.authenticate(request, launch_data, use_session=False)
+        except LTIAuthException:
+            return error_page(request, "error_unknown_user")
+        if user is None:
+            return error_page(request, "error_unknown_user")
+
+        if (
+            purpose == "scores"
+            and play
+            and not can_review_scores(
+                user, instance, play=play, launch_data=launch_data
+            )
+        ):
+            return error_page(request, "error_launch_validation")
+        if purpose == "instructor-resource":
+            provisional = LTILaunchService.ensure_instructor_visibility(
+                user, instance, LTILaunchService.get_context_id(launch_data)
+            )
+        if purpose in {"player", "instructor-resource"}:
+            LTILaunchService.register_association(
+                launch_data, user, instance, deployment=lti_launch.deployment
+            )
+        try:
+            token = issue_embedded_token(
+                user,
+                instance,
+                lti_launch,
+                purpose=purpose,
+                play_id=play.pk if play else None,
+                provisional_access=provisional,
+            )
+        except AuthenticationFailed:
+            logger.error(
+                "LTI: unable to store embedded authentication grant", exc_info=True
+            )
+            return error_page(request, "error_launch_validation")
+        return embedded_shell(
+            request, instance.pk if purpose == "player" else None, token
+        )
 
     def handle_deep_linking_launch(self, request, lti_launch):
         launch_data = lti_launch.get_launch_data()

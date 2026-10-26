@@ -14,6 +14,14 @@ from api.views import (
     widgets,
 )
 from api.views.lti import LtiWidgetInstancesInCourseView
+from api.views.embedded import (
+    EmbeddedContextView,
+    EmbeddedDeepLinkInstancesView,
+    EmbeddedDeepLinkSelectionView,
+    EmbeddedPlayView,
+    EmbeddedScoreResubmitView,
+    EmbeddedScoresView,
+)
 from django.urls import include, path
 from rest_framework import routers
 
@@ -32,6 +40,24 @@ router.register(r"site-images", site.SiteImageViewSet)
 router.register(r"site-messages", site.SiteMessageViewSet)
 
 urlpatterns = [
+    path("embedded/context/", EmbeddedContextView.as_view(), name="embedded-context"),
+    path(
+        "embedded/deep-link/instances/",
+        EmbeddedDeepLinkInstancesView.as_view(),
+        name="embedded-deep-link-instances",
+    ),
+    path(
+        "embedded/deep-link/selection/",
+        EmbeddedDeepLinkSelectionView.as_view(),
+        name="embedded-deep-link-selection",
+    ),
+    path("embedded/scores/", EmbeddedScoresView.as_view(), name="embedded-scores"),
+    path(
+        "embedded/scores/resubmit/",
+        EmbeddedScoreResubmitView.as_view(),
+        name="embedded-score-resubmit",
+    ),
+    path("embedded/play/", EmbeddedPlayView.as_view(), name="embedded-play"),
     path("", include(router.urls)),
     # Community Library
     path("community-library/", community_library.CommunityLibraryListView.as_view()),
