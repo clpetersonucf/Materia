@@ -90,8 +90,6 @@ class EmbeddedGrant:
         method = request.method
         instance_path = f"/api/instances/{self.instance_id}/"
 
-        logger.error("path is: %s", path)
-
         if method == "GET" and path in (
             instance_path,
             instance_path + "question_sets/",

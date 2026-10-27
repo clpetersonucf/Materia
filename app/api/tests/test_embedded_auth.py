@@ -15,6 +15,7 @@ from core.models import (
     WidgetInstance,
     WidgetQset,
 )
+from django.conf import settings
 from django.contrib.auth.models import AnonymousUser, User
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.core.cache import cache
@@ -29,6 +30,7 @@ CLAIM = "https://purl.imsglobal.org/spec/lti/claim/"
 @override_settings(
     EMBEDDED_AUTH_ENABLED=True,
     EMBEDDED_AUTH_TOKEN_TTL=14400,
+    URLS={**settings.URLS, "BASE_URL": "http://testserver/"},
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
     LTI_USERDATA={
         "claim": None,
@@ -380,15 +382,29 @@ class EmbeddedAuthTests(MateriaTestCase):
         self.authenticate()
         self.assertEqual(self.start_play().status_code, 401)
 
-    def test_shell_does_not_create_play_and_guest_embed_uses_shell(self):
-        for path in (f"/embedded/{self.instance.pk}/", f"/embed/{self.guest.pk}/"):
-            with self.subTest(path=path):
-                response = self.client.get(path)
+    def test_shell_does_not_create_play(self):
+        response = self.client.get(f"/embedded/{self.instance.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("no-store", response["Cache-Control"])
+        self.assertEqual(response["Referrer-Policy"], "no-referrer")
+        self.assertFalse(response.cookies)
+        self.assertFalse(LogPlay.objects.exists())
+
+    def test_direct_guest_embed_initializes_anonymous_play_without_launch_token(self):
+        for logged_in in (False, True):
+            with self.subTest(logged_in=logged_in):
+                if logged_in:
+                    self.client.force_login(self.user)
+                response = self.client.get(f"/embed/{self.guest.pk}/")
                 self.assertEqual(response.status_code, 200)
                 self.assertIn("no-store", response["Cache-Control"])
-                self.assertEqual(response["Referrer-Policy"], "no-referrer")
-                self.assertFalse(response.cookies)
-        self.assertFalse(LogPlay.objects.exists())
+                self.assertNotContains(response, "EMBEDDED_ACCESS_TOKEN")
+                play = LogPlay.objects.latest("created_at")
+                self.assertEqual(play.instance, self.guest)
+                self.assertIsNone(play.user_id)
+                self.assertEqual(play.auth, "")
+                self.assertFalse(LtiPlayState.objects.filter(play=play).exists())
+        self.assertEqual(LogPlay.objects.count(), 2)
 
     def test_validated_launch_returns_shell_without_logging_out_first_party_user(self):
         request = RequestFactory().post("/ltilaunch/")
