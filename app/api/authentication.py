@@ -45,10 +45,11 @@ class EmbeddedGrant:
         )
 
     def authorize(self, request):
-        """Admit only explicit capabilities within this launch's scope."""
         if not isinstance(request.data, Mapping):
             raise PermissionDenied("Invalid embedded request body.")
 
+        # evaluates permissions by ensuring the purpose and scope are included in the
+        # embedded permissions ruleset
         rule = EMBEDDED_RULES.get((request.resolver_match.url_name, request.method))
 
         if rule and self.purpose in rule.purposes and rule.scope(self, request):

@@ -1,8 +1,9 @@
-"""Default-deny capabilities for launch-scoped bearer grants.
+# Evaluates permissions for embedded grants that are scoped to individual launches
 
-Add each route/method explicitly, with its purposes and scope predicate, and test
-both admission and rejection. View-level object permissions still apply.
-"""
+# Permissions are defined for each route and method explicitly. Defines a Rule for each
+# combination that specifies a purpose and scope.
+
+# Note that view-level object permissions are still applied.
 
 from __future__ import annotations
 
@@ -13,6 +14,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from api.authentication import EmbeddedGrant
     from rest_framework.request import Request
+
+
+# Scope definitions
 
 
 def launch_scope(grant, request):
@@ -71,12 +75,16 @@ class Rule:
     scope: Callable[[EmbeddedGrant, Request], bool]
 
 
+# Purpose definitions
+
 PLAYER = frozenset({"player"})
 SCORES = frozenset({"scores"})
 DEEP_LINK = frozenset({"deep-link"})
 ALL_PURPOSES = (
     PLAYER | SCORES | DEEP_LINK | {"course-navigation", "instructor-resource"}
 )
+
+# Embedded rules that are applied during embedded grant token authorization
 
 EMBEDDED_RULES = {
     ("embedded-context", "GET"): Rule(ALL_PURPOSES, launch_scope),
