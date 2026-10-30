@@ -1,9 +1,9 @@
 from types import SimpleNamespace
 import time
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import jwt
-from api.authentication import _grant_key, issue_embedded_token
+from api.authentication import EmbeddedGrant, _grant_key, issue_embedded_token
 from api.tests.base import MateriaTestCase
 from core.models import (
     Log,
@@ -19,12 +19,178 @@ from django.conf import settings
 from django.contrib.auth.models import AnonymousUser, User
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.core.cache import cache
-from django.test import RequestFactory, override_settings
+from django.test import RequestFactory, SimpleTestCase, override_settings
+from django.urls import Resolver404, resolve
 from lti.views.launch import ApplicationLaunchView
+from lti.exceptions import LTIAuthException
 from lti_tool.models import Key, LtiDeployment, LtiRegistration
 from rest_framework.test import APIClient
+from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 
 CLAIM = "https://purl.imsglobal.org/spec/lti/claim/"
+
+
+class EmbeddedCapabilityTests(SimpleTestCase):
+    purposes = {
+        "player",
+        "course-navigation",
+        "deep-link",
+        "instructor-resource",
+        "scores",
+    }
+
+    def grant(self, purpose="player"):
+        return EmbeddedGrant(
+            user_id=1,
+            instance_id="embed123",
+            deployment_id=1,
+            launch_data={
+                CLAIM + "context": {"id": "course"},
+                CLAIM + "resource_link": {"id": "resource"},
+            },
+            purpose=purpose,
+        )
+
+    def request(self, path, method="GET", *, data=None, query=None):
+        return SimpleNamespace(
+            path=path,
+            method=method,
+            resolver_match=resolve(path),
+            data={} if data is None else data,
+            query_params=query or {},
+        )
+
+    def test_explicit_route_method_and_purpose_matrix(self):
+        cases = (
+            ("/api/embedded/context/", "GET", self.purposes, {}, {}),
+            ("/api/embedded/deep-link/instances/", "GET", {"deep-link"}, {}, {}),
+            ("/api/embedded/deep-link/selection/", "POST", {"deep-link"}, {}, {}),
+            ("/api/embedded/scores/", "GET", {"scores"}, {}, {}),
+            ("/api/embedded/scores/resubmit/", "POST", {"scores"}, {}, {}),
+            ("/api/instances/embed123/", "GET", {"player", "scores"}, {}, {}),
+            (
+                "/api/instances/embed123/performance/",
+                "GET",
+                {"player", "scores"},
+                {},
+                {},
+            ),
+            ("/api/instances/embed123/question_sets/", "GET", {"player"}, {}, {}),
+            ("/api/site-messages/", "GET", {"player"}, {}, {}),
+            ("/api/embedded/play/", "POST", {"player"}, {"instanceId": "embed123"}, {}),
+            (
+                "/api/scores/",
+                "GET",
+                {"player"},
+                {},
+                {"inst_id": "embed123", "user": "1", "context": "course"},
+            ),
+            ("/api/play-sessions/play/", "PUT", {"player"}, {}, {}),
+            ("/api/play-sessions/play/verify/", "GET", {"player"}, {}, {}),
+            ("/api/play-sessions/play/resubmit/", "POST", {"player"}, {}, {}),
+            ("/api/scores/details/", "GET", {"player"}, {}, {"play_id": "play"}),
+            ("/api/storage/", "POST", {"player"}, {"play_id": "play"}, {}),
+            ("/api/storage/", "GET", {"player"}, {}, {"play_id": "play"}),
+            ("/api/storage/", "GET", {"player"}, {}, {"inst_id": "embed123"}),
+        )
+        plays = Mock()
+        plays.filter.return_value.exists.return_value = True
+        with patch.object(EmbeddedGrant, "plays", return_value=plays):
+            for path, allowed_method, purposes, data, query in cases:
+                for purpose in self.purposes | {"unknown"}:
+                    for method in (
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "PATCH",
+                        "DELETE",
+                        "HEAD",
+                        "OPTIONS",
+                    ):
+                        with self.subTest(path=path, purpose=purpose, method=method):
+                            request = self.request(path, method, data=data, query=query)
+                            if purpose in purposes and method == allowed_method:
+                                self.grant(purpose).authorize(request)
+                            # Storage has both GET and POST capabilities.
+                            elif (
+                                path != "/api/storage/"
+                                or method not in {"GET", "POST"}
+                                or purpose != "player"
+                            ):
+                                with self.assertRaises(PermissionDenied):
+                                    self.grant(purpose).authorize(request)
+
+    def test_drfs_format_suffix_routes_are_disabled(self):
+        routes = (
+            ("/api/instances/", "/api/instances.json/"),
+            ("/api/instances/embed123/", "/api/instances/embed123.json/"),
+            (
+                "/api/play-sessions/play/verify/",
+                "/api/play-sessions/play/verify.json/",
+            ),
+        )
+        for normal_path, suffixed_path in routes:
+            with self.subTest(path=normal_path):
+                self.assertIsNotNone(resolve(normal_path))
+                with self.assertRaises(Resolver404):
+                    resolve(suffixed_path)
+
+    def test_scope_and_preview_exclusions(self):
+        cases = (
+            ("/api/instances/other/", "GET", {}, {}),
+            ("/api/embedded/play/", "POST", {"instanceId": "other"}, {}),
+            (
+                "/api/scores/",
+                "GET",
+                {},
+                {"inst_id": "embed123", "user": "2", "context": "course"},
+            ),
+            (
+                "/api/scores/",
+                "GET",
+                {},
+                {"inst_id": "embed123", "user": "1", "context": "other"},
+            ),
+            (
+                "/api/scores/details/",
+                "GET",
+                {},
+                {"play_id": "play", "preview_inst_id": ""},
+            ),
+            ("/api/storage/", "GET", {}, {"inst_id": "other"}),
+            ("/api/users/", "GET", {}, {}),
+        )
+        plays = Mock()
+        plays.filter.return_value.exists.return_value = True
+        with patch.object(EmbeddedGrant, "plays", return_value=plays):
+            for path, method, data, query in cases:
+                with self.subTest(path=path, query=query):
+                    with self.assertRaises(PermissionDenied):
+                        self.grant().authorize(
+                            self.request(path, method, data=data, query=query)
+                        )
+            for path, method in (
+                ("/api/play-sessions/play/", "PUT"),
+                ("/api/play-sessions/play/verify/", "GET"),
+                ("/api/play-sessions/play/resubmit/", "POST"),
+            ):
+                for key in ("previewInstanceId", "previewPlayId"):
+                    with self.subTest(path=path, key=key):
+                        with self.assertRaises(PermissionDenied):
+                            self.grant().authorize(
+                                self.request(path, method, data={key: ""})
+                            )
+            plays.filter.return_value.exists.return_value = False
+            with self.assertRaises(PermissionDenied):
+                self.grant().authorize(
+                    self.request("/api/scores/details/", query={"play_id": "other"})
+                )
+
+    def test_non_mapping_body_is_rejected_before_route_policy(self):
+        with self.assertRaisesMessage(
+            PermissionDenied, "Invalid embedded request body."
+        ):
+            self.grant().authorize(self.request("/api/embedded/context/", data=[]))
 
 
 @override_settings(
@@ -818,13 +984,19 @@ class EmbeddedAuthTests(MateriaTestCase):
             with self.subTest(target=target):
                 data = {**self.launch_data, CLAIM + "target_link_uri": target}
                 self.launch.get_launch_data = lambda: data
-                with patch("lti.views.launch.issue_embedded_token") as issue:
+                with (
+                    patch("lti.views.launch.issue_embedded_token") as issue,
+                    patch(
+                        "lti.views.launch.LTIAuthService.authenticate"
+                    ) as authenticate,
+                ):
                     response = ApplicationLaunchView().get_embedded_launch_response(
                         request, self.launch
                     )
                 self.assertContains(response, "error_unknown_assignment")
                 self.assertNotContains(response, "EMBEDDED_ACCESS_TOKEN")
                 issue.assert_not_called()
+                authenticate.assert_not_called()
         self.assertFalse(LogPlay.objects.exists())
 
     def test_lti_guest_launch_parameters_cannot_bypass_guest_rejection(self):
@@ -848,6 +1020,138 @@ class EmbeddedAuthTests(MateriaTestCase):
                 )
             self.assertContains(response, "error_launch_validation")
             issue.assert_not_called()
+
+    def test_guest_and_missing_score_targets_fail_before_provisioning(self):
+        request = RequestFactory().post("/ltilaunch/")
+        request.user = AnonymousUser()
+        for target, error in (
+            (f"http://testserver/embed/{self.guest.pk}/", "error_lti_guest_mode"),
+            (
+                f"http://testserver/scores/single/{self.instance.pk}/missing-play/",
+                "error_unknown_assignment",
+            ),
+        ):
+            with self.subTest(target=target):
+                data = {**self.launch_data, CLAIM + "target_link_uri": target}
+                self.launch.get_launch_data = lambda: data
+                with (
+                    patch(
+                        "lti.views.launch.LTIAuthService.authenticate"
+                    ) as authenticate,
+                    patch("lti.views.launch.issue_embedded_token") as issue,
+                ):
+                    response = ApplicationLaunchView().get_embedded_launch_response(
+                        request, self.launch
+                    )
+                self.assertContains(response, error)
+                authenticate.assert_not_called()
+                issue.assert_not_called()
+
+    def test_user_provisioning_failures_do_not_register_or_issue_grants(self):
+        request = RequestFactory().post("/ltilaunch/")
+        request.user = AnonymousUser()
+        for failure in (None, LTIAuthException()):
+            with self.subTest(failure=failure):
+                with (
+                    patch(
+                        "lti.views.launch.LTIAuthService.authenticate",
+                        return_value=None,
+                        side_effect=failure,
+                    ) as authenticate,
+                    patch(
+                        "lti.views.launch.LTILaunchService.register_association"
+                    ) as register,
+                    patch("lti.views.launch.issue_embedded_token") as issue,
+                ):
+                    response = ApplicationLaunchView().get_embedded_launch_response(
+                        request, self.launch
+                    )
+                self.assertContains(response, "error_unknown_user")
+                authenticate.assert_called_once_with(
+                    request, self.launch_data, use_session=False
+                )
+                register.assert_not_called()
+                issue.assert_not_called()
+
+    def test_denied_score_review_fails_after_provisioning_without_launch_side_effects(
+        self,
+    ):
+        play = self.create_review_play()
+        data = {
+            **self.launch_data,
+            CLAIM
+            + "target_link_uri": f"http://testserver/scores/single/{self.instance.pk}/{play.pk}/",
+        }
+        self.launch.get_launch_data = lambda: data
+        request = RequestFactory().post("/ltilaunch/")
+        request.user = AnonymousUser()
+        with (
+            patch(
+                "lti.views.launch.LTIAuthService.authenticate", return_value=self.user
+            ) as authenticate,
+            patch("lti.views.launch.can_review_scores", return_value=False) as review,
+            patch(
+                "lti.views.launch.LTILaunchService.ensure_instructor_visibility"
+            ) as visibility,
+            patch("lti.views.launch.LTILaunchService.register_association") as register,
+            patch("lti.views.launch.issue_embedded_token") as issue,
+        ):
+            response = ApplicationLaunchView().get_embedded_launch_response(
+                request, self.launch
+            )
+        self.assertContains(response, "error_launch_validation")
+        authenticate.assert_called_once_with(request, data, use_session=False)
+        review.assert_called_once_with(
+            self.user, self.instance, play=play, launch_data=data
+        )
+        visibility.assert_not_called()
+        register.assert_not_called()
+        issue.assert_not_called()
+
+    def test_instructor_side_effects_precede_token_storage_failure(self):
+        data = {
+            **self.launch_data,
+            CLAIM
+            + "roles": ["http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"],
+        }
+        self.launch.get_launch_data = lambda: data
+        request = RequestFactory().post("/ltilaunch/")
+        request.user = AnonymousUser()
+        calls = Mock()
+        with (
+            patch(
+                "lti.views.launch.LTIAuthService.authenticate", return_value=self.user
+            ) as authenticate,
+            patch(
+                "lti.views.launch.LTILaunchService.ensure_instructor_visibility",
+                return_value=True,
+            ) as visibility,
+            patch("lti.views.launch.LTILaunchService.register_association") as register,
+            patch(
+                "lti.views.launch.issue_embedded_token",
+                side_effect=AuthenticationFailed("Storage unavailable"),
+            ) as issue,
+        ):
+            for name, mock in (
+                ("authenticate", authenticate),
+                ("visibility", visibility),
+                ("register", register),
+                ("issue", issue),
+            ):
+                calls.attach_mock(mock, name)
+            response = ApplicationLaunchView().get_embedded_launch_response(
+                request, self.launch
+            )
+        self.assertContains(response, "error_launch_validation")
+        self.assertEqual(
+            [call[0] for call in calls.mock_calls],
+            ["authenticate", "visibility", "register", "issue"],
+        )
+        visibility.assert_called_once_with(self.user, self.instance, "course")
+        register.assert_called_once_with(
+            data, self.user, self.instance, deployment=self.deployment
+        )
+        self.assertTrue(issue.call_args.kwargs["provisional_access"])
 
     def test_deep_link_listing_follows_scoped_pagination(self):
         self.instance.permissions.create(user=self.user, permission="full")

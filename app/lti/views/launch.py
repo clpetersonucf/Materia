@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from api.authentication import issue_embedded_token
@@ -27,6 +28,19 @@ from pylti1p3.exception import LtiException
 from rest_framework.exceptions import AuthenticationFailed
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class EmbeddedLaunchTarget:
+    purpose: str
+    instance: WidgetInstance | None = None
+    play: LogPlay | None = None
+
+
+class EmbeddedLaunchError(Exception):
+    def __init__(self, error_type):
+        super().__init__(error_type)
+        self.error_type = error_type
 
 
 class ApplicationLaunchView(LtiLaunchBaseView):
@@ -142,93 +156,15 @@ class ApplicationLaunchView(LtiLaunchBaseView):
             return error_page(request, "error_unknown_assignment")
 
     def get_embedded_launch_response(self, request, lti_launch):
-        """
-        Returns a number of different views depending on launch validation and context.
-        If validation fails, returns an LTI error page of a particular type.
-        Otherwise, returns an embed shell that houses content while providing access to a grant token
-        """
+        # Resolve a target, authorize its user, and render a launch-scoped shell
         launch_data = lti_launch.get_launch_data()
-        instance = None
-        play = None
-        provisional = False
-
-        # determine `purpose` by inspecting launch context
-
-        if not lti_launch.is_resource_launch:
-            purpose = "deep-link"
-        else:
-            try:
-                target = urlsplit(LTILaunchService.get_launch_redirect(lti_launch))
-            except ValueError:
-                logger.error("LTI: embedded launch target is malformed", exc_info=True)
-                return error_page(request, "error_unknown_assignment")
-            base = urlsplit(settings.URLS["BASE_URL"])
-            if (
-                target.scheme
-                and target.scheme != base.scheme
-                or target.netloc
-                and target.netloc != base.netloc
-            ):
-                logger.error("LTI: embedded launch target is not a Materia URL")
-                return error_page(request, "error_unknown_assignment")
-            try:
-                route = resolve(target.path.rstrip("/") + "/")
-            except Resolver404:
-                return error_page(request, "error_unknown_assignment")
-
-            # post_login is used for course nav
-            if target.path.rstrip("/") == "/lti/post_login":
-                purpose = "course-navigation"
-            elif route.url_name in {
-                "widget play",
-                "widget embed",
-                "scores",
-                "single score",
-            }:
-                instance_id = route.kwargs["widget_instance_id"]
-                play_id = route.kwargs.get("play_id")
-                if play_id and len(play_id) < len(instance_id):
-                    instance_id, play_id = play_id, instance_id
-                instance = WidgetInstance.objects.filter(
-                    pk=instance_id, is_deleted=False
-                ).first()
-                if instance is None:
-                    return error_page(request, "error_unknown_assignment")
-                if instance.guest_access:
-                    return error_page(request, "error_lti_guest_mode")
-                if route.url_name in {"scores", "single score"}:
-
-                    # score screen, either immediate post-play or viewing a prior submission
-                    purpose = "scores"
-                    if play_id:
-                        play = LogPlay.objects.filter(
-                            pk=play_id, instance=instance
-                        ).first()
-                        if play is None:
-                            return error_page(request, "error_unknown_assignment")
-                else:
-
-                    # player-related views: `instructor-resource` is rendered instead for course authors
-                    # (the widget preview view)
-                    # otherwise, `player` is rendered
-                    purpose = (
-                        "instructor-resource"
-                        if LTIAuthService.is_user_course_author(launch_data)
-                        else "player"
-                    )
-                    if not (
-                        LTILaunchService.get_context_id(launch_data)
-                        and LTILaunchService.get_resource_link(launch_data)
-                    ):
-                        logger.error(
-                            "LTI: embedded launch is missing course or resource context"
-                        )
-                        return error_page(request, "error_launch_validation")
-            else:
-                return error_page(request, "error_unknown_assignment")
         try:
-            # we call the auth service here to provision or update the user record and roles
-            # however, since we're not relying on auth sessions for embedded launches, login() is skipped
+            target = self._resolve_embedded_target(lti_launch, launch_data)
+        except EmbeddedLaunchError as exc:
+            return error_page(request, exc.error_type)
+
+        instance, play, purpose = target.instance, target.play, target.purpose
+        try:
             user = LTIAuthService.authenticate(request, launch_data, use_session=False)
         except LTIAuthException:
             return error_page(request, "error_unknown_user")
@@ -243,6 +179,7 @@ class ApplicationLaunchView(LtiLaunchBaseView):
             )
         ):
             return error_page(request, "error_launch_validation")
+        provisional = False
         if purpose == "instructor-resource":
             provisional = LTILaunchService.ensure_instructor_visibility(
                 user, instance, LTILaunchService.get_context_id(launch_data)
@@ -268,6 +205,78 @@ class ApplicationLaunchView(LtiLaunchBaseView):
         return embedded_shell(
             request, instance.pk if purpose == "player" else None, token
         )
+
+    def _resolve_embedded_target(self, lti_launch, launch_data):
+        if not lti_launch.is_resource_launch:
+            return EmbeddedLaunchTarget("deep-link")
+
+        route = self._resolve_embedded_route(lti_launch)
+        if route.url_name == "lti login success":
+            return EmbeddedLaunchTarget("course-navigation")
+        if route.url_name in {"scores", "single score"}:
+            return self._resolve_scores_target(route)
+        if route.url_name in {"widget play", "widget embed"}:
+            return self._resolve_widget_target(route, launch_data)
+        raise EmbeddedLaunchError("error_unknown_assignment")
+
+    def _resolve_embedded_route(self, lti_launch):
+        try:
+            target = urlsplit(LTILaunchService.get_launch_redirect(lti_launch))
+        except ValueError as exc:
+            logger.error("LTI: embedded launch target is malformed", exc_info=True)
+            raise EmbeddedLaunchError("error_unknown_assignment") from exc
+        base = urlsplit(settings.URLS["BASE_URL"])
+        if (
+            target.scheme
+            and target.scheme != base.scheme
+            or target.netloc
+            and target.netloc != base.netloc
+        ):
+            logger.error("LTI: embedded launch target is not a Materia URL")
+            raise EmbeddedLaunchError("error_unknown_assignment")
+        try:
+            return resolve(target.path.rstrip("/") + "/")
+        except Resolver404 as exc:
+            raise EmbeddedLaunchError("error_unknown_assignment") from exc
+
+    def _get_embedded_instance(self, instance_id):
+        instance = WidgetInstance.objects.filter(
+            pk=instance_id, is_deleted=False
+        ).first()
+        if instance is None:
+            raise EmbeddedLaunchError("error_unknown_assignment")
+        if instance.guest_access:
+            raise EmbeddedLaunchError("error_lti_guest_mode")
+        return instance
+
+    def _resolve_widget_target(self, route, launch_data):
+        instance = self._get_embedded_instance(route.kwargs["widget_instance_id"])
+        purpose = (
+            "instructor-resource"
+            if LTIAuthService.is_user_course_author(launch_data)
+            else "player"
+        )
+        if not (
+            LTILaunchService.get_context_id(launch_data)
+            and LTILaunchService.get_resource_link(launch_data)
+        ):
+            logger.error("LTI: embedded launch is missing course or resource context")
+            raise EmbeddedLaunchError("error_launch_validation")
+        return EmbeddedLaunchTarget(purpose, instance)
+
+    def _resolve_scores_target(self, route):
+        instance_id = route.kwargs["widget_instance_id"]
+        play_id = route.kwargs.get("play_id")
+        # Older score links put the play ID before the shorter instance ID.
+        if play_id and len(play_id) < len(instance_id):
+            instance_id, play_id = play_id, instance_id
+        instance = self._get_embedded_instance(instance_id)
+        play = None
+        if play_id:
+            play = LogPlay.objects.filter(pk=play_id, instance=instance).first()
+            if play is None:
+                raise EmbeddedLaunchError("error_unknown_assignment")
+        return EmbeddedLaunchTarget("scores", instance, play)
 
     def handle_deep_linking_launch(self, request, lti_launch):
         launch_data = lti_launch.get_launch_data()
